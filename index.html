@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>校园助手 Pro - 支付分离增强版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --primary: #4f46e5; --bg: #f3f4f6; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding-bottom: 30px; }
+        header { background: white; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 1.2rem; font-weight: 800; color: var(--primary); }
+        .tabs { display: flex; background: #e5e7eb; padding: 4px; border-radius: 25px; margin: 15px auto; width: 90%; max-width: 400px; }
+        .tab { flex: 1; text-align: center; padding: 10px 0; font-size: 0.85rem; font-weight: 600; cursor: pointer; border-radius: 20px; transition: 0.3s; color: #6b7280; }
+        .tab.active { background: white; color: var(--primary); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        main { max-width: 600px; margin: 0 auto; padding: 0 15px; }
+        .btn-pub { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 12px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+        
+        /* 卡片增强样式 */
+        .card { background: white; border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative; }
+        .card-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 5px; display: block; }
+        .card-price { color: #dc2626; font-size: 1.25rem; font-weight: 800; margin-bottom: 8px; }
+        .card-contact { font-size: 0.85rem; color: #4b5563; background: #f3f4f6; padding: 6px 10px; border-radius: 6px; display: block; margin-bottom: 10px; }
+        .img-main { width: 100%; border-radius: 10px; margin-bottom: 12px; border: 1px solid #eee; }
+        .pay-section { border-top: 1px dashed #eee; padding-top: 10px; margin-top: 10px; }
+        .pay-label { font-size: 0.75rem; color: #ef4444; font-weight: bold; margin-bottom: 5px; display: block; }
+        .img-pay { width: 100px; height: 100px; border-radius: 8px; border: 2px solid #fee2e2; object-fit: cover; }
+
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); align-items: flex-end; justify-content: center; z-index: 1000; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; width: 100%; max-width: 500px; border-radius: 20px 20px 0 0; padding: 25px; max-height: 90vh; overflow-y: auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.85rem; color: #666; margin-bottom: 5px; }
+        .form-input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 1rem; }
+        .loading { text-align: center; color: #9ca3af; padding: 40px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">CAMPUS助手 PRO</div>
+    <div style="font-size: 0.75rem; color: #10b981;">● 云端实名同步</div>
+</header>
+
+<div class="tabs">
+    <div class="tab active" onclick="switchTab('market', this)">二手交易</div>
+    <div class="tab" onclick="switchTab('carpool', this)">校园拼车</div>
+    <div class="tab" onclick="switchTab('jobs', this)">兼职信息</div>
+</div>
+
+<main>
+    <button class="btn-pub" onclick="toggleModal(true)">+ 我要发布</button>
+    <div id="itemList">
+        <div class="loading">正在连接云数据库...</div>
+    </div>
+</main>
+
+<div class="modal" id="pubModal">
+    <div class="modal-content">
+        <h3 id="modalTitle" style="margin-top:0">发布动态</h3>
+        <div class="form-group">
+            <label>信息标题</label>
+            <input type="text" id="pTitle" class="form-input" placeholder="如：九成新耳机 / 考研资料">
+        </div>
+        <div class="form-group">
+            <label>标价/费用 (¥)</label>
+            <input type="text" id="pPrice" class="form-input" placeholder="0代表免费">
+        </div>
+        <div class="form-group">
+            <label>联系方式 (微信/手机)</label>
+            <input type="text" id="pContact" class="form-input" placeholder="必填">
+        </div>
+        <div class="form-group" style="background: #f9fafb; padding: 10px; border-radius: 10px;">
+            <label style="color: #4f46e5; font-weight: bold;">🖼️ 上传展示图片</label>
+            <input type="file" id="pFile" accept="image/*" style="font-size: 0.8rem;">
+        </div>
+        <div class="form-group" style="background: #fff1f2; padding: 10px; border-radius: 10px;">
+            <label style="color: #e11d48; font-weight: bold;">💰 上传支付二维码 (选填)</label>
+            <input type="file" id="pPayFile" accept="image/*" style="font-size: 0.8rem;">
+        </div>
+        <button id="subBtn" class="btn-pub" style="margin-top: 10px;" onclick="handleSubmit()">立即发布到全校</button>
+        <button onclick="toggleModal(false)" style="width:100%; background:none; border:none; color:#999; padding:10px;">取消返回</button>
+    </div>
+</div>
+
+<script>
+    const S_URL = 'https://befdeaaoyzdtjrtxknsf.supabase.co';
+    const S_KEY = 'yJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlZmRlYWFveXpkdGpydHhrbnNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3ODYxNTAsImV4cCI6MjA4NjM2MjE1MH0.t8DzJGmPA8d1j-EnlPiwRcvBwVpAm1_03R9fGnHsSTg';
+    
+    const client = supabase.createClient(S_URL, S_KEY);
+    let currentCategory = 'market';
+
+    function switchTab(cat, el) {
+        currentCategory = cat;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+        loadData();
+    }
+
+    async function loadData() {
+        const listDiv = document.getElementById('itemList');
+        listDiv.innerHTML = '<div class="loading">正在同步云端信息...</div>';
+
+        const { data, error } = await client
+            .from('items')
+            .select('*')
+            .eq('category', currentCategory)
+            .order('id', { ascending: false });
+
+        if (error) {
+            listDiv.innerHTML = '<div class="loading" style="color:red">连接数据库失败</div>';
+            return;
+        }
+
+        listDiv.innerHTML = data.length ? '' : '<div class="loading">此分类下暂无动态</div>';
+        data.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <span class="card-title">${item.title}</span>
+                <div class="card-price">¥ ${item.price}</div>
+                <div class="card-contact">联系我：${item.contact}</div>
+                ${item.image_url ? `<img src="${item.image_url}" class="img-main">` : ''}
+                ${item.pay_url ? `
+                    <div class="pay-section">
+                        <span class="pay-label">支付/打赏二维码：</span>
+                        <img src="${item.pay_url}" class="img-pay" onclick="window.open(this.src)">
+                    </div>
+                ` : ''}
+                <div style="font-size:0.7rem; color:#ccc; margin-top:10px;">发布时间: ${new Date(item.created_at).toLocaleString()}</div>
+            `;
+            listDiv.appendChild(card);
+        });
+    }
+
+    async function uploadToStorage(file) {
+        if (!file) return "";
+        const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 5)}_${file.name}`;
+        const { data, error } = await client.storage.from('images').upload(fileName, file);
+        if (error) throw error;
+        return client.storage.from('images').getPublicUrl(fileName).data.publicUrl;
+    }
+
+    async function handleSubmit() {
+        const btn = document.getElementById('subBtn');
+        const title = document.getElementById('pTitle').value.trim();
+        const price = document.getElementById('pPrice').value.trim();
+        const contact = document.getElementById('pContact').value.trim();
+        const file = document.getElementById('pFile').files[0];
+        const payFile = document.getElementById('pPayFile').files[0];
+
+        if (!title || !price || !contact) return alert('请填写完整必填项');
+        
+        btn.innerText = "云端同步中...";
+        btn.disabled = true;
+
+        try {
+            // 分别上传两张图
+            const [imgUrl, payUrl] = await Promise.all([
+                uploadToStorage(file),
+                uploadToStorage(payFile)
+            ]);
+
+            const { error } = await client.from('items').insert([{
+                title, price, contact, 
+                category: currentCategory, 
+                image_url: imgUrl, 
+                pay_url: payUrl // 这里新增一个字段存支付码
+            }]);
+
+            if (error) throw error;
+            alert('🎉 发布成功！');
+            location.reload();
+        } catch (err) {
+            alert('发布失败：' + err.message + '\n请确认数据库items表有 pay_url 字段');
+            btn.innerText = "立即发布";
+            btn.disabled = false;
+        }
+    }
+
+    function toggleModal(show) {
+        document.getElementById('pubModal').classList.toggle('active', show);
+    }
+
+    loadData();
+</script>
+</body>
+</html>
